@@ -51,6 +51,9 @@ def svm_loss_naive(W, X, y, reg):
   # code above to compute the gradient.                                       #
   #############################################################################
 
+  
+
+  dW += reg * W
 
   return loss, dW
 
