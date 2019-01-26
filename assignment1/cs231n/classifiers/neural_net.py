@@ -240,8 +240,7 @@ class TwoLayerNet(object):
     ###########################################################################
     # TODO: Implement this function; it should be VERY simple!                #
     ###########################################################################
-    hiddens = X.dot(self.params['W1']) + self.params['b1']
-    scores = hiddens.dot(self.params['W2']) + self.params['b2']
+    scores = self.loss(X)
     y_pred = np.argmax(scores, axis=1)
     ###########################################################################
     #                              END OF YOUR CODE                           #
