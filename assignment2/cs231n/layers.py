@@ -59,7 +59,8 @@ def affine_backward(dout, cache):
     
     dx = dout.dot(w.T)
     dw = x.reshape(N, -1).T.dot(dout)
-    db = dout.T.dot(np.ones(N))
+    # db = dout.T.dot(np.ones(N))
+    db = np.sum(dout, axis=0)
     
     dx = dx.reshape(x.shape)
     ###########################################################################
@@ -184,7 +185,19 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # Referencing the original paper (https://arxiv.org/abs/1502.03167)   #
         # might prove to be helpful.                                          #
         #######################################################################
-        pass
+        
+        sample_mean = np.mean(x, axis=0)
+        sample_var = np.var(x, axis=0)
+        std = np.sqrt(sample_var + eps)
+        
+        xmu = x - sample_mean
+        xhat = xmu / std
+        out = gamma * xhat + beta
+        
+        running_mean = momentum * running_mean + (1 - momentum) * sample_mean
+        running_var = momentum * running_var + (1 - momentum) * sample_var
+        
+        cache = (gamma, xmu, std, xhat)
         #######################################################################
         #                           END OF YOUR CODE                          #
         #######################################################################
@@ -195,7 +208,8 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         # then scale and shift the normalized data using gamma and beta.      #
         # Store the result in the out variable.                               #
         #######################################################################
-        pass
+        xhat = (x - running_mean) / np.sqrt(running_var + eps)
+        out = gamma * xhat + beta
         #######################################################################
         #                          END OF YOUR CODE                           #
         #######################################################################
@@ -233,7 +247,28 @@ def batchnorm_backward(dout, cache):
     # Referencing the original paper (https://arxiv.org/abs/1502.03167)       #
     # might prove to be helpful.                                              #
     ###########################################################################
-    pass
+    
+    N, D = dout.shape
+    gamma, xmu, std, xhat = cache
+    
+    # dgamma, dbeta
+    dgamma = np.sum(dout * xhat, axis=0)
+    dbeta = np.sum(dout, axis=0)
+    
+    # dxmu
+    dxmu = 0
+    dxhat = dout * gamma
+    dxmu += dxhat / std
+    
+    distd = np.sum(dxhat * xmu, axis=0)
+    dstd = distd * (-1 / std**2)
+    dvar = dstd * 0.5 / std
+    dsq = dvar * np.ones((N, D)) / N
+    dxmu += dsq * 2 * xmu
+    
+    eye = np.eye(N)
+    one_proj = np.ones((N, N)) / N
+    dx = (eye - one_proj).dot(dxmu)
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
