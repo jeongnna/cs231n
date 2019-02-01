@@ -192,14 +192,18 @@ class FullyConnectedNet(object):
         # parameters should be initialized to zeros.                               #
         ############################################################################
         
-        layer_dims = np.hstack([input_dim, hidden_dims, num_classes])
-        for i, layer_dim in enumerate(layer_dims):
-            if i > 0:
-                weight = weight_scale * np.random.randn(prev_dim, layer_dim)
-                bias = np.zeros(layer_dim)
-                self.params['W%d' % (i)] = weight
-                self.params['b%d' % (i)] = bias
-            prev_dim = layer_dim
+        dims = np.hstack([input_dim, hidden_dims, num_classes])
+        for idx in range(self.num_layers):
+            current_dim, next_dim = dims[idx], dims[idx + 1]
+            weight = weight_scale * np.random.randn(current_dim, next_dim)
+            bias = np.zeros(next_dim)
+            self.params['W%d' % idx] = weight
+            self.params['b%d' % idx] = bias
+            
+            # when using normalization
+            if self.normalization is not None and idx < self.num_layers - 1:
+                self.params['gamma%d' % idx] = np.ones(next_dim)
+                self.params['beta%d' % idx] = np.zeros(next_dim)
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -261,13 +265,36 @@ class FullyConnectedNet(object):
         cache = {}
         out = X
         
-        for i in range(self.num_layers):
-            w = self.params['W%d' % (i + 1)]
-            b = self.params['b%d' % (i + 1)]
-            out, layer_cache = affine_relu_forward(out, w, b)
-            cache['layer%d' % (i + 1)] = layer_cache
-        
-        _, scores = cache['layer%d' % (self.num_layers)]
+        for idx in range(self.num_layers):
+            W = self.params['W%d' % idx]
+            b = self.params['b%d' % idx]
+            
+            # forward
+            if idx == self.num_layers - 1:
+                scores, layer_cache = affine_forward(out, W, b)
+            elif self.normalization is not None:
+                gamma = self.params['gamma%d' % idx]
+                beta = self.params['beta%d' % idx]
+                bn_param = self.bn_params[idx]
+                args = (gamma, beta, bn_param, self.normalization)
+                out, layer_cache = affine_norm_relu_forward(out, W, b, *args)
+            else:
+                out, layer_cache = affine_relu_forward(out, W, b)
+            
+            cache['layer%d' % idx] = layer_cache
+            
+            # dropout
+            if self.use_dropout and idx < num_layers:
+                out, dropout_cache = dropout_forward(out, self.dropout_param)
+                cache['dropout%d' % idx] = dropout_cache
+                self.dropout_param['seed'] += 1
+                
+        # final layer
+        # idx = self.num_layers
+        # W = self.params['W%d' % idx]
+        # b = self.params['b%d' % idx]
+        # scores, layer_cache = affine_forward(out, W, b)
+        # cache['layer%d' % idx] = layer_cache
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -291,28 +318,36 @@ class FullyConnectedNet(object):
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
 
-        data_loss, dscores = softmax_loss(scores, y)
+        data_loss, dout = softmax_loss(scores, y)
         reg_loss = 0.0
         
-        for i in range(self.num_layers):
-            layer_id = self.num_layers - i
-            layer_cache = cache['layer%d' % (layer_id)]
-            fc_cache, relu_cache = cache['layer%d' % (layer_id)]
-            w = fc_cache[1]
+        for idx in range(self.num_layers - 1, -1, -1):
+            layer_cache = cache['layer%d' % idx]
+            W = self.params['W%d' % idx]
             
-            # regularization loss
-            reg_loss += 0.5 * self.reg * np.sum(w**2)
+            # dropout
+            if self.use_dropout and not idx == self.num_layers:
+                dropout_cache = cache['dropout%d' % idx]
+                dout = dropout_backward(dout, dropout_cache)
             
-            # backpropagation
-            if i == 0:
-                dout, dw, db = affine_backward(dscores, fc_cache)
+            # backward
+            if idx == self.num_layers - 1:
+                dout, dW, db = affine_backward(dout, layer_cache)
+            elif self.normalization is not None:
+                dout, dW, db, dgamma, dbeta = affine_norm_relu_backward(dout, layer_cache, self.normalization)
+                # store gradients
+                grads['gamma%d' % idx] = dgamma
+                grads['beta%d' % idx] = dbeta
             else:
-                dout, dw, db = affine_relu_backward(dout, (fc_cache, relu_cache))
-            dw += self.reg * w # by regularization
+                dout, dW, db = affine_relu_backward(dout, layer_cache)
             
-            # store gradients
-            grads['W%d' % (layer_id)] = dw
-            grads['b%d' % (layer_id)] = db
+            # regularization
+            reg_loss += 0.5 * self.reg * np.sum(W**2)
+            dW += self.reg * W
+            
+            # store dW, db
+            grads['W%d' % idx] = dW
+            grads['b%d' % idx] = db
         
         loss = data_loss + reg_loss
         ############################################################################
