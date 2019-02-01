@@ -127,6 +127,8 @@ def conv_relu_pool_backward(dout, cache):
     """
     conv_cache, relu_cache, pool_cache = cache
     ds = max_pool_backward_fast(dout, pool_cache)
-    da, dgamma, dbeta = relu_backward(ds, relu_cache)
+    # da, dgamma, dbeta = relu_backward(ds, relu_cache)
+    da = relu_backward(ds, relu_cache)
     dx, dw, db = conv_backward_fast(da, conv_cache)
-    return dx, dw, db, dgamma, dbeta
+    # return dx, dw, db, dgamma, dbeta
+    return dx, dw, db

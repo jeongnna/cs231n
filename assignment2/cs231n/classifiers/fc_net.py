@@ -120,7 +120,7 @@ class TwoLayerNet(object):
         dW1 += self.reg * W1
         dW2 += self.reg * W2
         
-        # store gradients in `grads`
+        # store gradients
         grads['W1'] = dW1
         grads['b1'] = db1
         grads['W2'] = dW2
