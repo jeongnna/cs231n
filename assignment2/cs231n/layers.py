@@ -525,6 +525,7 @@ def conv_forward_naive(x, w, b, conv_param):
     # TODO: Implement the convolutional forward pass.                         #
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
+    
     N, C, H, W = x.shape
     F, _, HH, WW = w.shape
     
@@ -536,20 +537,9 @@ def conv_forward_naive(x, w, b, conv_param):
     out_size = H_prime * W_prime
     filter_size = C * HH * WW
     
+    # create xnode & wnode
     xpad = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
-    # out = np.zeros((N, F, H_prime, W_prime))
-    
-    # for i in range(H_prime):
-    #     for j in range(W_prime):
-    #         hpos = i * stride
-    #         wpos = j * stride
-    #         window = xpad[:, :, hpos:(hpos + HH), wpos:(wpos + WW)] # (N, C, HH, WW)
-    #         conv = window.reshape(N, 1, C, HH, WW) * w.reshape(1, F, C, HH, WW)
-    #         conv = np.sum(conv, axis=(2, 3, 4)) + b # (N, F)
-    #         out[:, :, i, j] = conv
-    
     xnode = np.zeros((N, H_prime, W_prime, C, HH, WW))
-    
     for i in range(H_prime):
         for j in range(W_prime):
             hpos = i * stride
@@ -558,14 +548,15 @@ def conv_forward_naive(x, w, b, conv_param):
             xnode[:, i, j, :, :, :] = window
     
     xnode = xnode.reshape(N, out_size, filter_size)
-    wnode = w.reshape(F, filter_size).T
+    wnode = w.reshape(F, filter_size).swapaxes(0, 1)
+    
+    # forward pass
     out = xnode.dot(wnode) + b # (N, out_size, F)
     out = out.swapaxes(1, 2).reshape(N, F, H_prime, W_prime)
-    
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
-    cache = (x, w, b, conv_param)
+    cache = (x, w, b, conv_param, xnode)
     return out, cache
 
 
@@ -586,7 +577,8 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    x, w, b, conv_param = cache
+    
+    x, w, b, conv_param, xnode = cache
     N, C, H, W = x.shape
     F, _, HH, WW = w.shape
     
@@ -598,28 +590,26 @@ def conv_backward_naive(dout, cache):
     out_size = H_prime * W_prime
     filter_size = C * HH * WW
     
-    xpad = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+    wnode = w.reshape(F, filter_size).swapaxes(0, 1) # (filter_size, F)
+    dout = dout.reshape(N, F, -1).swapaxes(1, 2) # (N, out_size, F)
     
-    xnode = np.zeros((N, H_prime, W_prime, C, HH, WW))
+    # gradient
+    dxnode = dout.dot(wnode.T) # (N, out_size, filter_size)
+    dwnode = xnode.reshape(-1, filter_size).T.dot(dout.reshape(-1, F)) # (filter_size, F)
     
+    # dxnode -> dxpad
+    dxpad = np.zeros((N, C, H + 2 * pad, W + 2 * pad))
+    dxnode = dxnode.reshape(N, H_prime, W_prime, C, HH, WW)
     for i in range(H_prime):
         for j in range(W_prime):
             hpos = i * stride
             wpos = j * stride
-            window = xpad[:, :, hpos:(hpos + HH), wpos:(wpos + WW)] # (N, C, HH, WW)
-            xnode[:, i, j, :, :, :] = window
+            window = dxnode[:, i, j, :, :, :] # (N, C, HH, WW)
+            dxpad[:, :, hpos:(hpos + HH), wpos:(wpos + WW)] += window
     
-    xnode = xnode.reshape(N, out_size, filter_size) # (N, out_size, filter_size)
-    wnode = w.reshape(F, filter_size).T # (filter_size, F)
-    dout = dout.reshape(N, F, -1).swapaxes(1, 2) # (N, out_size, F)
-    
-    dxnode = dout.dot(wnode.T)
-    dwnode = xnode.T.reshape(filter_size, -1).dot(dout.reshape(-1, F))
-    
-    dx = x
-    dw = dwnode.T.reshape(F, C, HH, WW)
+    dx = dxpad[:, :, pad:-pad, pad:-pad]
+    dw = dwnode.swapaxes(0, 1).reshape(F, C, HH, WW)
     db = np.sum(dout, axis=(0, 1))
-    
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
