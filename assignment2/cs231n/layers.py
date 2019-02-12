@@ -538,8 +538,8 @@ def conv_forward_naive(x, w, b, conv_param):
     filter_size = C * HH * WW
     
     # create xnode & wnode
-    xpad = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
-    xnode = np.zeros((N, H_prime, W_prime, C, HH, WW))
+    xpad = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant') # (N, C, H, W)
+    xnode = np.zeros((N, H_prime, W_prime, C, HH, WW)) # (N, H', W', C, HH, WW)
     for i in range(H_prime):
         for j in range(W_prime):
             hpos = i * stride
@@ -548,7 +548,7 @@ def conv_forward_naive(x, w, b, conv_param):
             xnode[:, i, j, :, :, :] = window
     
     xnode = xnode.reshape(N, out_size, filter_size)
-    wnode = w.reshape(F, filter_size).swapaxes(0, 1)
+    wnode = w.reshape(F, filter_size).swapaxes(0, 1) # (filter_size, F)
     
     # forward pass
     out = xnode.dot(wnode) + b # (N, out_size, F)
